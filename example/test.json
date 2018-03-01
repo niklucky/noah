@@ -1,0 +1,6 @@
+{
+  "driver": "mysql",
+  "password": "12345",
+  "database": "WWM_media",
+  "port": 33061
+}
