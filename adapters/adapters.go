@@ -25,16 +25,15 @@ type Migration struct {
 
 // Adapter — DB adapter interface
 type Adapter interface {
-	AddMigrations(migrations)
-	Check() (map[string]Migration, error)
+	Check() error
 	Migrate() error
 }
 
 // New - adapter constructor
-func New(config Config) (Adapter, error) {
+func New(config Config, migrations map[string]string) (Adapter, error) {
 
 	if config.Driver == "mysql" {
-		return NewMySQL(config), nil
+		return NewMySQL(config, migrations), nil
 	}
 	return nil, errors.New("Driver not found")
 }

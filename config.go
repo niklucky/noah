@@ -1,10 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-
 	lib "github.com/niklucky/go-lib"
 	"github.com/niklucky/noah/adapters"
+	"gopkg.in/yaml.v2"
 )
 
 func parseDBConfig(configFileName string) (config adapters.Config, err error) {
@@ -12,14 +11,8 @@ func parseDBConfig(configFileName string) (config adapters.Config, err error) {
 	if err != nil {
 		return
 	}
-	if err = json.Unmarshal(fileData, &config); err != nil {
+	if err = yaml.Unmarshal(fileData, &config); err != nil {
 		return
-	}
-	if config.User == "" {
-		config.User = "root"
-	}
-	if config.Host == "" {
-		config.Host = "localhost"
 	}
 	return config, err
 }

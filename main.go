@@ -1,65 +1,54 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"log"
 
+	"github.com/fatih/color"
 	"github.com/niklucky/noah/adapters"
 )
 
+var flags settings
+
 func main() {
-	var configFile string
-	var dumpDir string
-	var mode string
-	var (
-		modeDev,
-		modeProduction,
-		modeTesting bool
-	)
+	flags = parseFlags()
 
-	flag.StringVar(&configFile, "config", ".", "Pass config file where DB credentials are")
-	flag.StringVar(&dumpDir, "dir", ".", "Directory where Dump files are located")
-	flag.BoolVar(&modeDev, "D", true, "Development staging migration")
-	flag.BoolVar(&modeProduction, "P", false, "Production staging migration")
-	flag.BoolVar(&modeTesting, "T", false, "Testing staging migration")
+	intro()
 
-	flag.Parse()
+	info(infoLoadingConfig)
+	config, err := parseDBConfig(flags.configFile)
+	if err != nil {
+		fatal(fmt.Sprintln("Error parsing config: ", err))
+	}
 
-	if modeProduction {
-		mode = "prod"
-	}
-	if modeDev {
-		mode = "dev"
-	}
-	if modeTesting {
-		mode = "test"
-	}
-	fmt.Println("Config file: ", configFile)
-	fmt.Println("Dump dir: ", dumpDir)
-	fmt.Println("Mode: ", mode)
-	config, err := parseDBConfig(configFile)
+	info(fmt.Sprintf(infoLoadingMigrations, color.HiYellowString(flags.dir)))
+	migrations, err := loadMigrations(flags.dir, flags.mode)
 	if err != nil {
-		log.Fatalln("Error parsing config: ", err)
+		fatal(fmt.Sprintln("Error loading migration data: ", err))
 	}
-	fmt.Println("Config: ", config)
-	adapter, err := adapters.New(config)
+	info(fmt.Sprintf(infoDatabaseStart, config.Database))
+	info(fmt.Sprintf(infoConnectingToDB, color.HiYellowString(config.Database)))
+
+	adapter, err := adapters.New(config, migrations)
 	if err != nil {
-		log.Fatalln("Error creating adapter: ", err)
+		fatal(fmt.Sprintf("Error creating adapter: %v", err))
 	}
-	migrations, err := loadMigrations(dumpDir, mode)
-	if err != nil {
-		log.Fatalln("Error loading data: ", err)
+	info(fmt.Sprintf(infoConnectedToDB, color.HiYellowString(config.Database)))
+
+	if err = adapter.Check(); err != nil {
+		fatal(fmt.Sprintf("Error in check migration:  %v", err))
 	}
-	fmt.Println("Migrations: ", len(migrations))
-	adapter.AddMigrations(migrations)
-	var processed map[string]adapters.Migration
-	if processed, err = adapter.Check(); err != nil {
-		fmt.Println("Error in check migration: ", err)
-	}
-	fmt.Println("Processed: ", processed)
 	if err = adapter.Migrate(); err != nil {
-		fmt.Println("Error in migration: ", err)
+		fatal(fmt.Sprintf("Error in migration:  %v", err))
 	}
-	fmt.Println("Success! Migrations finished.")
+	info("Success! Migrations finished.")
+}
+
+func intro() {
+	fmt.Println(color.HiCyanString("===================================================="))
+	fmt.Printf("\n\t\t%s: Starting migrations\n\n", color.HiGreenString("Noah"))
+	fmt.Println(color.HiCyanString("===================================================="))
+	fmt.Printf("\n[INFO] Config file: \t%s\n", flags.configFile)
+	fmt.Printf("[INFO] Dump dir: \t\t%s\n", flags.dir)
+	fmt.Printf("[INFO] Mode: \t\t%s\n\n", color.HiMagentaString(flags.mode))
+	fmt.Println(color.HiCyanString("----------------------------------------------------"))
 }

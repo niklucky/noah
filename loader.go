@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 func loadMigrations(dir, mode string) (migrations map[string]string, err error) {
@@ -17,11 +18,14 @@ func loadMigrations(dir, mode string) (migrations map[string]string, err error) 
 
 	for _, f := range files {
 		if f.IsDir() == false {
+			name := f.Name()
+			if strings.Contains(name, "config") {
+				continue
+			}
 			path := dir + "/" + f.Name()
 			var data []byte
-			fmt.Println("Loading file: ", path)
 			if data, err = ioutil.ReadFile(path); err != nil {
-				fmt.Println("Error loading file: ", err)
+				fatal(fmt.Sprintf("Error loading file: %s\n", err))
 			}
 			migrations[f.Name()] = string(data)
 		}

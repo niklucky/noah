@@ -2,11 +2,17 @@ package adapters
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	parser "github.com/PGV65/sql-parser"
 	_ "github.com/go-sql-driver/mysql" // mysql
 )
+
+const table = "_migrations"
+const createTableSQL = "CREATE TABLE `_migrations` (`name` varchar(255) NOT NULL DEFAULT '', `migrated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 // MySQL - DB adapter
 type MySQL struct {
@@ -18,35 +24,90 @@ type MySQL struct {
 }
 
 // NewMySQL - MySQL adapter constructor
-func NewMySQL(config Config) *MySQL {
+func NewMySQL(config Config, m migrations) *MySQL {
 	return &MySQL{
-		config: config,
+		config:     config,
+		migrations: m,
 	}
-}
-
-// AddMigrations - adding migration
-func (db *MySQL) AddMigrations(m migrations) {
-	db.migrations = m
 }
 
 // Check - checking for migrations
-func (db *MySQL) Check() (migrations map[string]Migration, err error) {
-	migrations = make(map[string]Migration)
-	SQL := `SELECT name, migrated_at FROM migrations`
-	rows, err := db.exec(SQL)
-	if err != nil {
+func (db *MySQL) Check() (err error) {
+	if err = db.connect(); err != nil {
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var m Migration
-		if err = rows.Scan(&m.Name, &m.MigratedAt); err != nil {
+
+	var SQL string
+	migrations := make(map[string]Migration)
+
+	SQL = `SELECT name, migrated_at FROM ` + db.config.Database + `.` + table + `;`
+	rows, err := db.exec(SQL)
+	if err != nil {
+		fmt.Println("Error loading migrations from DB: ", err)
+		if strings.Contains(err.Error(), "Error 1049") {
+			if err = db.createDB(); err != nil {
+				return
+			}
+			return db.Check()
+		} else if strings.Contains(err.Error(), "Error 1146") {
+			if err = db.createDB(); err != nil {
+				return
+			}
+			if err = db.createTable(); err != nil {
+				return
+			}
+			return db.Check()
+		} else {
 			return
 		}
+	} else {
+		defer rows.Close()
+	}
+
+	err = nil
+
+	SQL = `USE ` + db.config.Database + `;`
+	_, err = db.conn.Exec(SQL)
+	if err != nil {
+		fmt.Println("Error while selecting DB: ", err)
+		return
+	}
+	for rows.Next() {
+		var m Migration
+		var migratedAt string
+		if err = rows.Scan(&m.Name, &migratedAt); err != nil {
+			return
+		}
+		m.MigratedAt, _ = time.Parse("2006-01-02 15:04:05", migratedAt)
 		migrations[m.Name] = m
-		fmt.Println("Rows: ", m)
 	}
 	db.processed = migrations
+	return
+}
+
+func (db *MySQL) createTable() (err error) {
+	_, err = db.conn.Exec(`USE ` + db.config.Database + `;`)
+	if err != nil {
+		fmt.Println("Error creating table: ", err)
+		return
+	}
+	_, err = db.conn.Exec(createTableSQL)
+	if err != nil {
+		fmt.Println("Error creating table: ", err)
+		return
+	}
+	return
+}
+
+func (db *MySQL) createDB() (err error) {
+	SQL := `CREATE DATABASE ` + db.config.Database + `;`
+	fmt.Println(SQL)
+
+	_, err = db.conn.Exec(SQL)
+	if err != nil {
+		fmt.Println("Error creating DB: ", err)
+		return
+	}
 	return
 }
 
@@ -58,7 +119,6 @@ func (db *MySQL) Migrate() (err error) {
 			keys = append(keys, key)
 		}
 	}
-	fmt.Println("Keys: ", keys)
 	for _, key := range keys {
 		if err = db.migrate(db.migrations[key]); err != nil {
 			return
@@ -67,12 +127,11 @@ func (db *MySQL) Migrate() (err error) {
 			return
 		}
 	}
-	fmt.Println("Processed!")
 	return
 }
 
 func (db *MySQL) save(key string) (err error) {
-	SQL := `INSERT INTO migrations (name) VALUES ('` + key + `');`
+	SQL := `INSERT INTO ` + db.config.Database + `.` + table + ` (name) VALUES ('` + key + `');`
 	_, err = db.conn.Exec(SQL)
 	return
 }
@@ -84,10 +143,12 @@ func (db *MySQL) migrate(data string) (err error) {
 	}
 	tx, _ := db.conn.Begin()
 	defer tx.Commit()
+	tx.Exec("USE " + db.config.Database)
 	for _, query := range queries {
 		if _, err = tx.Exec(query); err != nil {
 			fmt.Println("[ERROR] Error: ", err)
 			fmt.Println("[ERROR] SQL: ", query)
+			tx.Rollback()
 			return
 		}
 	}
@@ -116,12 +177,23 @@ func (db *MySQL) query(SQL string, values []interface{}) (*sql.Rows, error) {
 
 func (db *MySQL) connect() error {
 	config := db.config
-	connectionInfo := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v",
+	if config.User == "" {
+		config.User = "root"
+	}
+	if config.Host == "" {
+		config.Host = "localhost"
+	}
+	if config.Port == 0 {
+		config.Port = 3306
+	}
+	if config.Database == "" {
+		return errors.New("Database is empty")
+	}
+	connectionInfo := fmt.Sprintf("%v:%v@tcp(%v:%v)/",
 		config.User,
 		config.Password,
 		config.Host,
 		config.Port,
-		config.Database,
 	)
 	conn, err := sql.Open("mysql", connectionInfo)
 	if err != nil {
