@@ -34,9 +34,6 @@ func main() {
 	}
 	info(fmt.Sprintf(infoConnectedToDB, color.HiYellowString(config.Database)))
 
-	if err = adapter.Check(); err != nil {
-		fatal(fmt.Sprintf("Error in check migration:  %v", err))
-	}
 	if err = adapter.Migrate(); err != nil {
 		fatal(fmt.Sprintf("Error in migration:  %v", err))
 	}

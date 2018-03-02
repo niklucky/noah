@@ -25,7 +25,6 @@ type Migration struct {
 
 // Adapter — DB adapter interface
 type Adapter interface {
-	Check() error
 	Migrate() error
 }
 

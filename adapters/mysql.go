@@ -31,8 +31,8 @@ func NewMySQL(config Config, m migrations) *MySQL {
 	}
 }
 
-// Check - checking for migrations
-func (db *MySQL) Check() (err error) {
+// check - checking for migrations
+func (db *MySQL) check() (err error) {
 	if err = db.connect(); err != nil {
 		return
 	}
@@ -48,7 +48,7 @@ func (db *MySQL) Check() (err error) {
 			if err = db.createDB(); err != nil {
 				return
 			}
-			return db.Check()
+			return db.check()
 		} else if strings.Contains(err.Error(), "Error 1146") {
 			if err = db.createDB(); err != nil {
 				return
@@ -56,7 +56,7 @@ func (db *MySQL) Check() (err error) {
 			if err = db.createTable(); err != nil {
 				return
 			}
-			return db.Check()
+			return db.check()
 		} else {
 			return
 		}
@@ -113,6 +113,10 @@ func (db *MySQL) createDB() (err error) {
 
 // Migrate - starting migration
 func (db *MySQL) Migrate() (err error) {
+	if err = db.check(); err != nil {
+		return
+	}
+
 	var keys []string
 	for key := range db.migrations {
 		if _, ok := db.processed[key]; ok == false {
