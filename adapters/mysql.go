@@ -7,12 +7,14 @@ import (
 	"strings"
 	"time"
 
-	parser "github.com/PGV65/sql-parser"
+	sqlparser "github.com/PGV65/sql-parser"
 	_ "github.com/go-sql-driver/mysql" // mysql
 )
 
 const table = "_migrations"
 const createTableSQL = "CREATE TABLE `_migrations` (`name` varchar(255) NOT NULL DEFAULT '', `migrated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+
+var parser = sqlparser.Parser{}
 
 // MySQL - DB adapter
 type MySQL struct {
