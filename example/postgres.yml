@@ -1,0 +1,6 @@
+driver: postgres
+password: 12345
+database: WWM_media
+port: 54321
+reconnect_timeout: 5
+reconnect_attempts: 5
