@@ -2,5 +2,7 @@
   "driver": "mysql",
   "password": "12345",
   "database": "WWM_media",
-  "port": 3306
+  "port": 33062,
+  "reconnect_timeout": 5,
+  "reconnect_attempts": 5
 }

@@ -15,6 +15,7 @@ const table = "_migrations"
 const createTableSQL = "CREATE TABLE `_migrations` (`name` varchar(255) NOT NULL DEFAULT '', `migrated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 var parser = sqlparser.Parser{}
+var reconnectAttempts = 0
 
 // MySQL - DB adapter
 type MySQL struct {
@@ -27,6 +28,13 @@ type MySQL struct {
 
 // NewMySQL - MySQL adapter constructor
 func NewMySQL(config Config, m migrations) *MySQL {
+	fmt.Printf("Config: %+v\n\n", config)
+	if config.RTimeout == 0 {
+		config.RTimeout = 1
+	}
+	if config.RAttempts == 0 {
+		config.RAttempts = 1
+	}
 	return &MySQL{
 		config:     config,
 		migrations: m,
@@ -115,6 +123,9 @@ func (db *MySQL) createDB() (err error) {
 
 // Migrate - starting migration
 func (db *MySQL) Migrate() (err error) {
+	if err = db.connect(); err != nil {
+		return
+	}
 	if err = db.check(); err != nil {
 		return
 	}
@@ -208,6 +219,16 @@ func (db *MySQL) connect() error {
 	}
 	if conn == nil {
 		fmt.Println("Connection to MySQL is nil")
+	}
+	if err = conn.Ping(); err != nil {
+		if db.config.RAttempts > reconnectAttempts {
+			reconnectAttempts++
+			fmt.Printf("Failed connection: %v\n", err)
+			fmt.Printf("Reconnecting %d of %d ...\n", reconnectAttempts, db.config.RAttempts)
+			time.Sleep(time.Duration(db.config.RTimeout) * time.Second)
+			return db.connect()
+		}
+		return fmt.Errorf("Failed connection: %v", err)
 	}
 	db.conn = conn
 	return nil

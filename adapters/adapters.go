@@ -2,17 +2,20 @@ package adapters
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
 // Config - database config
 type Config struct {
-	Driver   string `json:"driver"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Database string `json:"database"`
+	Driver    string `json:"driver"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	User      string `json:"user"`
+	Password  string `json:"password"`
+	Database  string `json:"database"`
+	RTimeout  int    `json:"reconnect_timeout" yaml:"reconnect_timeout"`
+	RAttempts int    `json:"reconnect_attempts" yaml:"reconnect_attempts"`
 }
 
 type migrations map[string]string
@@ -35,4 +38,8 @@ func New(config Config, migrations map[string]string) (Adapter, error) {
 		return NewMySQL(config, migrations), nil
 	}
 	return nil, errors.New("Driver not found")
+}
+
+func info(values ...interface{}) {
+	fmt.Println(values)
 }
