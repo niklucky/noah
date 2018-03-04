@@ -53,18 +53,19 @@ func (db *MySQL) getCreateTableQuery() string {
 }
 
 // getConnectionString - default MySQL
-func (db *MySQL) getConnectionString() string {
-	return fmt.Sprintf("%v:%v@tcp(%v:%v)/",
+func (db *MySQL) getConnectionString(database string) string {
+	return fmt.Sprintf("%v:%v@tcp(%v:%v)/%v",
 		db.config.User,
 		db.config.Password,
 		db.config.Host,
 		db.config.Port,
+		database,
 	)
 }
 
 // Migrate - starting migration
 func (db *MySQL) Migrate() (err error) {
-	if err = db.connect(); err != nil {
+	if err = db.connect(db.config.Database); err != nil {
 		return
 	}
 	if err = db.loadProcessed(); err != nil {
@@ -97,34 +98,17 @@ func (db *MySQL) loadProcessed() (err error) {
 	rows, err := db.conn.Query(SQL)
 	if err != nil {
 		fmt.Println("Error loading migrations from DB: ", err)
-		if strings.Contains(err.Error(), "Error 1049") {
-			if err = db.createDB(); err != nil {
-				return
-			}
-			return db.loadProcessed()
-		} else if strings.Contains(err.Error(), "Error 1146") {
-			if err = db.createDB(); err != nil {
-				return
-			}
+		fmt.Println("Will try to create")
+		if db.checkError(err) == 2 {
 			if err = db.createTable(); err != nil {
 				return
 			}
 			return db.loadProcessed()
-		} else {
-			return
 		}
-	} else {
-		defer rows.Close()
-	}
-
-	err = nil
-
-	SQL = `USE ` + db.config.Database + `;`
-	_, err = db.conn.Exec(SQL)
-	if err != nil {
-		fmt.Println("Error while selecting DB: ", err)
 		return
 	}
+	defer rows.Close()
+
 	for rows.Next() {
 		var m Migration
 		var migratedAt string
@@ -139,11 +123,7 @@ func (db *MySQL) loadProcessed() (err error) {
 }
 
 func (db *MySQL) createTable() (err error) {
-	_, err = db.conn.Exec(`USE ` + db.config.Database + `;`)
-	if err != nil {
-		fmt.Println("Error creating table: ", err)
-		return
-	}
+	fmt.Println("Creating table: ", table)
 	_, err = db.conn.Exec(db.getCreateTableQuery())
 	if err != nil {
 		fmt.Println("Error creating table: ", err)
@@ -153,19 +133,24 @@ func (db *MySQL) createTable() (err error) {
 }
 
 func (db *MySQL) createDB() (err error) {
+	fmt.Println("Creating database: ", db.config.Database)
+	db.connect("")
 	SQL := `CREATE DATABASE ` + db.config.Database + `;`
-	fmt.Println(SQL)
-
 	_, err = db.conn.Exec(SQL)
 	if err != nil {
 		fmt.Println("Error creating DB: ", err)
 		return
 	}
-	return
+	if err = db.conn.Close(); err != nil {
+		fmt.Println("Error closing connection: ", err)
+		return
+	}
+	return db.connect(db.config.Database)
 }
 
 func (db *MySQL) save(key string) (err error) {
-	SQL := `INSERT INTO ` + db.config.Database + `.` + table + ` (name) VALUES ('` + key + `');`
+	migratedAt := time.Now().Format("2006-01-02T15:04:05")
+	SQL := `INSERT INTO ` + table + ` (name, migrated_at) VALUES ('` + key + `', '` + migratedAt + `');`
 	_, err = db.conn.Exec(SQL)
 	return
 }
@@ -177,7 +162,6 @@ func (db *MySQL) migrate(data string) (err error) {
 	}
 	tx, _ := db.conn.Begin()
 	defer tx.Commit()
-	tx.Exec("USE " + db.config.Database)
 	for _, query := range queries {
 		if _, err = tx.Exec(query); err != nil {
 			fmt.Println("[ERROR] Error: ", err)
@@ -189,8 +173,8 @@ func (db *MySQL) migrate(data string) (err error) {
 	return
 }
 
-func (db *MySQL) connect() (err error) {
-	if db.conn != nil {
+func (db *MySQL) connect(database string) (err error) {
+	if db.conn != nil && db.conn.Stats().OpenConnections > 0 {
 		return
 	}
 	config := db.config
@@ -198,7 +182,7 @@ func (db *MySQL) connect() (err error) {
 		return errors.New("Database is empty")
 	}
 
-	connectionInfo := db.getConnectionString()
+	connectionInfo := db.getConnectionString(database)
 	conn, err := db.open(config.Driver, connectionInfo)
 	if err != nil {
 		return fmt.Errorf("Connection error %s", err)
@@ -207,17 +191,30 @@ func (db *MySQL) connect() (err error) {
 		return fmt.Errorf("Connection is nil")
 	}
 	if err = conn.Ping(); err != nil {
+		if db.checkError(err) == 1 {
+			return db.createDB()
+		}
+
 		if db.config.RAttempts > reconnectAttempts {
 			reconnectAttempts++
 			fmt.Printf("Failed connection: %v\n", err)
 			fmt.Printf("Reconnecting %d of %d ...\n", reconnectAttempts, db.config.RAttempts)
 			time.Sleep(time.Duration(db.config.RTimeout) * time.Second)
-			return db.connect()
+			return db.connect(database)
 		}
 		return fmt.Errorf("Failed connection: %v", err)
 	}
 	db.conn = conn
 	return
+}
+func (db *MySQL) checkError(err error) (code int) {
+	if strings.Contains(err.Error(), fmt.Sprintf("Error 1049: Unknown database '%s'", db.config.Database)) {
+		return 1
+	}
+	if strings.Contains(err.Error(), fmt.Sprintf("Error 1146: Table '%s.%s' doesn't exist", db.config.Database, table)) {
+		return 2
+	}
+	return 0
 }
 
 func (db *MySQL) open(driver, connection string) (*sql.DB, error) {

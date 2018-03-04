@@ -60,7 +60,7 @@ func (db *Postgres) open(driver, connection string) (*sql.DB, error) {
 
 // GetConnectionString
 func (db *Postgres) getConnectionString(database string) string {
-	str := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=%v",
+	return fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=%v",
 		db.config.User,
 		db.config.Password,
 		db.config.Host,
@@ -68,8 +68,6 @@ func (db *Postgres) getConnectionString(database string) string {
 		database,
 		db.config.SSLmode,
 	)
-	fmt.Println(str)
-	return str
 }
 
 // Migrate - starting migration
@@ -131,6 +129,7 @@ func (db *Postgres) loadProcessed() (err error) {
 }
 
 func (db *Postgres) createTable() (err error) {
+	fmt.Println("Creating table: ", table)
 	_, err = db.conn.Exec(db.getCreateTableQuery())
 	if err != nil {
 		fmt.Println("Error creating table: ", err)
@@ -140,15 +139,16 @@ func (db *Postgres) createTable() (err error) {
 }
 
 func (db *Postgres) createDB() (err error) {
+	fmt.Println("Creating database: ", db.config.Database)
 	db.connect("")
 	SQL := `CREATE DATABASE ` + db.config.Database + `;`
-	fmt.Println(SQL)
 
 	_, err = db.conn.Exec(SQL)
 	if err != nil {
 		fmt.Println("Error creating DB: ", err)
 		return
 	}
+	db.conn.Close()
 	return db.connect(db.config.Database)
 }
 
@@ -178,7 +178,7 @@ func (db *Postgres) migrate(data string) (err error) {
 }
 
 func (db *Postgres) connect(database string) (err error) {
-	if db.conn != nil {
+	if db.conn != nil && db.conn.Stats().OpenConnections > 0 {
 		return
 	}
 	config := db.config
