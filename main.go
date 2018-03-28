@@ -15,6 +15,12 @@ func main() {
 	intro()
 
 	info(infoLoadingConfig)
+
+	if flags.isServer {
+		fmt.Println("Running in HTTP-server mode")
+		startServer(flags.port)
+		return
+	}
 	config, err := parseDBConfig(flags.configFile)
 	if err != nil {
 		fatal(fmt.Sprintln("Error parsing config: ", err))
