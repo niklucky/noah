@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,6 +79,7 @@ func (db *MySQL) Migrate() (err error) {
 			keys = append(keys, key)
 		}
 	}
+	sort.Strings(keys)
 	for _, key := range keys {
 		if err = db.migrate(db.migrations[key]); err != nil {
 			return

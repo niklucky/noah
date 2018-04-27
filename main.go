@@ -48,7 +48,7 @@ func main() {
 
 func intro() {
 	fmt.Println(color.HiCyanString("===================================================="))
-	fmt.Printf("\n\t\t%s: Starting migrations\n\n", color.HiGreenString("Noah"))
+	fmt.Printf("\n\t\t%s: Starting migrations\n\n", color.HiGreenString("Noah 0.1.0"))
 	fmt.Println(color.HiCyanString("===================================================="))
 	fmt.Printf("\n[INFO] Config file: \t%s\n", flags.configFile)
 	fmt.Printf("[INFO] Dump dir: \t\t%s\n", flags.dir)
