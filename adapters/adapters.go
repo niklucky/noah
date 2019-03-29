@@ -52,5 +52,5 @@ func New(config Config, migrations map[string]string) (Adapter, error) {
 }
 
 func info(values ...interface{}) {
-	fmt.Println(values)
+	fmt.Println(values...)
 }
